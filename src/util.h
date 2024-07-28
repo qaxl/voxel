@@ -21,6 +21,11 @@
 # endif
 #endif
 
+typedef struct GicHeapVec {
+    size_t elements;
+    void* begin;
+} GicHeapVec;
+
 
 char* gic_io_load_file_to_string(const char* filename);
 float gic_get_ticks();

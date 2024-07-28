@@ -16,6 +16,9 @@ add_executable(gic
     src/main.c
     src/util.c
 
+    src/generation/heightmap.c
+    src/generation/perlin.c
+
     src/graphics/camera.c
     src/graphics/renderer.c
     src/graphics/shader.c

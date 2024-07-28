@@ -4,7 +4,7 @@
 #include "vertex.h"
 #include "util.h"
 #include "platform/sdl_window.h"
-
+#include "generation/heightmap.h"
 
 #include <glad/gl.h>
 #include <glad/wgl.h>
@@ -24,6 +24,7 @@
 
 enum {
     SHADER_VOXEL,
+    SHADER_HM,
     NUM_OF_SHADERS,
 };
 
@@ -155,149 +156,6 @@ GicGlRenderer* gic_create_gl_renderer(GicWindow* window) {
 
     memset(&renderer->chunk, 0, sizeof(renderer->chunk));
 
-    bool (*active)[256][64] = malloc(64 * 256 * 64);
-    memset(active, 0, 64 * 256 * 64);
-
-    int i = 0;
-    int total_face_count = 0;
-    for (int x = 0; x < 64; ++x) {
-        for (int y = 0; y < 256; ++y) {
-            for (int z = 0; z < 64; ++z) {
-                // printf("Processing voxel at (%d, %d, %d)\n", x, y, z);
-
-                Voxel* voxel = &renderer->chunk.voxels[x][y][z];
-                Index* index = &renderer->chunk.indices[x][y][z];
-
-                voxel->vertices[0].data = ((x + 0) & 0x3F) | ((((y + 0) & 0xFF) << 6) ) | ((((z + 0) & 0x3F) << 14) ) | ((((x & 0x3F) << 20) | ((y & 0x3F) << 24) | ((z & 0x3F) << 28)));
-                voxel->vertices[1].data = ((x + 1) & 0x3F) | ((((y + 0) & 0xFF) << 6) ) | ((((z + 0) & 0x3F) << 14) ) | ((((x & 0x3F) << 20) | ((y & 0x3F) << 24) | ((z & 0x3F) << 28)));
-                voxel->vertices[2].data = ((x + 0) & 0x3F) | ((((y + 0) & 0xFF) << 6) ) | ((((z + 1) & 0x3F) << 14) ) | ((((x & 0x3F) << 20) | ((y & 0x3F) << 24) | ((z & 0x3F) << 28)));
-                voxel->vertices[3].data = ((x + 1) & 0x3F) | ((((y + 0) & 0xFF) << 6) ) | ((((z + 1) & 0x3F) << 14) ) | ((((x & 0x3F) << 20) | ((y & 0x3F) << 24) | ((z & 0x3F) << 28)));
-                voxel->vertices[4].data = ((x + 0) & 0x3F) | ((((y + 1) & 0xFF) << 6) ) | ((((z + 0) & 0x3F) << 14) ) | ((((x & 0x3F) << 20) | ((y & 0x3F) << 24) | ((z & 0x3F) << 28)));
-                voxel->vertices[5].data = ((x + 1) & 0x3F) | ((((y + 1) & 0xFF) << 6) ) | ((((z + 0) & 0x3F) << 14) ) | ((((x & 0x3F) << 20) | ((y & 0x3F) << 24) | ((z & 0x3F) << 28)));
-                voxel->vertices[6].data = ((x + 0) & 0x3F) | ((((y + 1) & 0xFF) << 6) ) | ((((z + 1) & 0x3F) << 14) ) | ((((x & 0x3F) << 20) | ((y & 0x3F) << 24) | ((z & 0x3F) << 28)));
-                voxel->vertices[7].data = ((x + 1) & 0x3F) | ((((y + 1) & 0xFF) << 6) ) | ((((z + 1) & 0x3F) << 14) ) | ((((x & 0x3F) << 20) | ((y & 0x3F) << 24) | ((z & 0x3F) << 28)));
-
-                // printf("%d\n%d\n--\n", voxel->vertices[0].data, voxel->vertices[1].data);
-                int face_count = 0;
-
-                if (x == 0 || x == 64 || y == 0 || y == 255 || z == 0 || z == 63) {
-                index->indices[0] = i + 0;  // Bottom-left
-                index->indices[1] = i + 1;  // Bottom-right
-                index->indices[2] = i + 2;  // Top-left
-                index->indices[3] = i + 1;  // Bottom-right
-                index->indices[4] = i + 3;  // Top-right
-                index->indices[5] = i + 2;  // Top-left
-
-                // Back Face
-                index->indices[6] = i + 4;  // Bottom-left
-                index->indices[7] = i + 6;  // Top-left
-                index->indices[8] = i + 5;  // Bottom-right
-                index->indices[9] = i + 5;  // Bottom-right
-                index->indices[10] = i + 6; // Top-left
-                index->indices[11] = i + 7; // Top-right
-
-                // Left Face
-                index->indices[12] = i + 0;  // Bottom-left
-                index->indices[13] = i + 2;  // Top-left
-                index->indices[14] = i + 6;  // Top-right
-                index->indices[15] = i + 0;  // Bottom-left
-                index->indices[16] = i + 6;  // Top-right
-                index->indices[17] = i + 4;  // Bottom-right
-
-                // Right Face
-                index->indices[18] = i + 1;  // Bottom-left
-                index->indices[19] = i + 5;  // Bottom-right
-                index->indices[20] = i + 3;  // Top-left
-                index->indices[21] = i + 3;  // Top-left
-                index->indices[22] = i + 5;  // Bottom-right
-                index->indices[23] = i + 7;  // Top-right
-
-                // Top Face
-                index->indices[24] = i + 2;  // Bottom-left
-                index->indices[25] = i + 3;  // Bottom-right
-                index->indices[26] = i + 6;  // Top-left
-                index->indices[27] = i + 3;  // Bottom-right
-                index->indices[28] = i + 7;  // Top-right
-                index->indices[29] = i + 6;  // Top-left
-
-                // Bottom Face
-                index->indices[30] = i + 0;  // Bottom-left
-                index->indices[31] = i + 4;  // Top-left
-                index->indices[32] = i + 1;  // Bottom-right
-                index->indices[33] = i + 1;  // Bottom-right
-                index->indices[34] = i + 4;  // Top-left
-                index->indices[35] = i + 5;  // Top-right
-
-                face_count = 36;
-                }
-                i += 8;
-                total_face_count += face_count;
- 
-                // Bottom face (y - 1)
-                // if (y == 0) {
-                //     index->indices[face_count++] = i + 0;
-                //     index->indices[face_count++] = i + 4;
-                //     index->indices[face_count++] = i + 1;
-                //     index->indices[face_count++] = i + 1;
-                //     index->indices[face_count++] = i + 4;
-                //     index->indices[face_count++] = i + 5;
-                // }
-    
-                // // Top face (y + 1)
-                // if (y == 255) {
-                //     index->indices[face_count++] = i + 2;
-                //     index->indices[face_count++] = i + 3;
-                //     index->indices[face_count++] = i + 6;
-                //     index->indices[face_count++] = i + 3;
-                //     index->indices[face_count++] = i + 7;
-                //     index->indices[face_count++] = i + 6;
-                // }
-    
-                // // Front face (z + 1)
-                // if (z == 63) {
-                //     index->indices[face_count++] = i + 1;
-                //     index->indices[face_count++] = i + 5;
-                //     index->indices[face_count++] = i + 3;
-                //     index->indices[face_count++] = i + 3;
-                //     index->indices[face_count++] = i + 5;
-                //     index->indices[face_count++] = i + 7;
-                // }
-    
-                // // Back face (z - 1)
-                // if (z == 0) {
-                //     index->indices[face_count++] = i + 0;
-                //     index->indices[face_count++] = i + 2;
-                //     index->indices[face_count++] = i + 4;
-                //     index->indices[face_count++] = i + 4;
-                //     index->indices[face_count++] = i + 2;
-                //     index->indices[face_count++] = i + 6;
-                // }
-    
-                // // Right face (x + 1)
-                // if (x == 63) {
-                //     index->indices[face_count++] = i + 1;
-                //     index->indices[face_count++] = i + 5;
-                //     index->indices[face_count++] = i + 3;
-                //     index->indices[face_count++] = i + 3;
-                //     index->indices[face_count++] = i + 5;
-                //     index->indices[face_count++] = i + 7;
-                // }
-    
-                // // Left face (x - 1)
-                // if (x == 0) {
-                //     index->indices[face_count++] = i + 0;
-                //     index->indices[face_count++] = i + 4;
-                //     index->indices[face_count++] = i + 2;
-                //     index->indices[face_count++] = i + 2;
-                //     index->indices[face_count++] = i + 4;
-                //     index->indices[face_count++] = i + 6;
-                // }
-            }
-        }
-    }
-
-    renderer->face_count = total_face_count;
-
     glCreateVertexArrays(1, &renderer->vao);
     // not a mistake, simply vbo and ibo are next to each other so they can be seen as an array.
     glGenBuffers(2, &renderer->vbo);
@@ -307,7 +165,7 @@ GicGlRenderer* gic_create_gl_renderer(GicWindow* window) {
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, renderer->ibo);
 
     glBufferData(GL_ARRAY_BUFFER, sizeof(renderer->chunk.voxels), &renderer->chunk.voxels[0][0][0].vertices[0], GL_STATIC_DRAW);
-    glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(renderer->chunk.indices), &renderer->chunk.indices[0][0][0].indices[0], GL_STATIC_DRAW);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(Index) * (renderer->face_count / 36), renderer->chunk.indices, GL_STATIC_DRAW);
 
     glVertexAttribIPointer(0, 1, GL_UNSIGNED_INT, 0, NULL);
     glEnableVertexAttribArray(0);
@@ -345,13 +203,89 @@ void gic_gl_clear(GicGlRenderer* renderer, float r, float g, float b) {
     PROCESS_KEY(A, CAM_LEFT)
     PROCESS_KEY(D, CAM_RIGHT)
     
-    glm_perspective(glm_rad(renderer->camera.zoom), (float)renderer->width / (float)renderer->height, 0.1f, 100.0f, renderer->projection);
+    glm_perspective(glm_rad(renderer->camera.zoom), (float)renderer->width / (float)renderer->height, 0.01f, 100.0f, renderer->projection);
     gic_camera_get_view_matrix(&renderer->camera, renderer->view);
 
     mat4 mvp;
     glm_mat4_mul(renderer->projection, renderer->view, mvp);
     glUniformMatrix4fv(1, 1, GL_FALSE, &mvp[0][0]);
 
-    glDrawElements(GL_TRIANGLES, renderer->face_count, GL_UNSIGNED_INT, NULL);
+    // glDrawElements(GL_TRIANGLES, renderer->face_count, GL_UNSIGNED_INT, NULL);
 }
 
+typedef struct Gic__HeightMapData {
+    uint32_t va;
+    uint32_t vb;
+    uint32_t ib;
+} Gic__HeightMapData;
+
+typedef struct Gic__HMVertex {
+    uint32_t packed_data;
+} Gic__HMVertex;
+
+typedef struct Gic__HMIndex {
+    uint32_t index;
+} Gic__HMIndex;
+
+#define PACK_DATA(x, z) vtx[i++].packed_data = x & 0x3F | ((int)hm->map[x][z] & 0xFF) << 6 | (z & 0x3F) << 14 | color
+#define PACK_INDEX
+
+static void gic_gl__initialize_height_map_data(GicHeightMap* hm, Gic__HeightMapData* hmd) {
+    glGenVertexArrays(1, &hmd->va);
+    glBindVertexArray(hmd->va);
+    
+    glGenBuffers(2, &hmd->vb);
+    glBindBuffer(GL_ARRAY_BUFFER, hmd->vb);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, hmd->ib);
+
+    glVertexAttribIPointer(0, 1, GL_INT, 0, NULL);
+    glEnableVertexAttribArray(0);
+
+    Gic__HMVertex* vtx = malloc(sizeof(*vtx) * HEIGHT_MAP_SIZE * HEIGHT_MAP_SIZE);
+    Gic__HMIndex* itx = malloc(sizeof(*itx) * HEIGHT_MAP_SIZE * HEIGHT_MAP_SIZE * 6);
+
+    int i = 0;
+    for (int x = 0; x < HEIGHT_MAP_SIZE; ++x) {
+        for (int z = 0; z < HEIGHT_MAP_SIZE; ++z) {
+            float height = hm->map[x][z];
+            int color = ((int)(height * 15.f) & 0x3F) << 20 | ((int)(height * 15.f) & 0x3F) << 24 | ((int)(height * 15.f) & 0x3F) << 28;
+            // int color = 15 << 20 | 15 << 24 | 15 << 28;
+            PACK_DATA(x, z);
+        }
+    }
+
+    int j = 0;
+    for (int x = 0; x < HEIGHT_MAP_SIZE - 1; ++x) {
+        for (int z = 0; z < HEIGHT_MAP_SIZE - 1; ++z) {
+            int l = x * HEIGHT_MAP_SIZE + z;
+            itx[j++].index = l;
+            itx[j++].index = l + HEIGHT_MAP_SIZE;
+            itx[j++].index = l + 1;
+
+            itx[j++].index = l + 1;
+            itx[j++].index = l + HEIGHT_MAP_SIZE;
+            itx[j++].index = l + HEIGHT_MAP_SIZE + 1;
+        }
+    }
+
+    glBufferData(GL_ARRAY_BUFFER, i * sizeof(Gic__HMVertex), vtx, GL_STATIC_DRAW);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, j * sizeof(Gic__HMIndex), itx, GL_STATIC_DRAW);
+    free(vtx);
+    free(itx);
+
+    glBindVertexArray(0);
+}
+
+void gic_gl_render_height_map(GicGlRenderer* renderer, GicHeightMap* hm) {
+    if (hm->_renderer_internal == NULL) {
+        hm->_renderer_internal = malloc(sizeof(Gic__HeightMapData));
+        gic_gl__initialize_height_map_data(hm, hm->_renderer_internal);
+    }
+
+    Gic__HeightMapData* hmd = hm->_renderer_internal;
+    glBindVertexArray(hmd->va);
+    glUseProgram(renderer->shaders[SHADER_VOXEL]);
+    
+    // glDrawArrays(GL_POINTS, 0, HEIGHT_MAP_SIZE * HEIGHT_MAP_SIZE);
+    glDrawElements(GL_TRIANGLES, 6 * HEIGHT_MAP_SIZE * HEIGHT_MAP_SIZE, GL_UNSIGNED_INT, NULL);
+}
