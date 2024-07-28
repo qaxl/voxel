@@ -13,6 +13,7 @@ add_subdirectory(deps/cglm)
 add_subdirectory(deps/SDL)
 
 add_executable(gic
+    src/impl.c
     src/main.c
     src/util.c
 
@@ -30,7 +31,12 @@ add_executable(gic
     deps/glad/src/wgl.c)
 
 target_link_libraries(gic PRIVATE opengl32 dwmapi cglm SDL3-shared)
-target_include_directories(gic PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/deps/glad/include ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_include_directories(gic 
+    PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/deps/glad/include 
+    PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src 
+    PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/deps/_headers
+    PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/deps/Nuklear 
+    PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/deps/Nuklear/demo/sdl_opengl3)
 
 configure_file(src/graphics/shaders/voxel.vert ${CMAKE_BINARY_DIR}/bin/shaders/voxel.vert COPYONLY)
 configure_file(src/graphics/shaders/voxel.frag ${CMAKE_BINARY_DIR}/bin/shaders/voxel.frag COPYONLY)

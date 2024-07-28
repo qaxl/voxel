@@ -25,6 +25,7 @@ typedef struct GicWindow {
     int height;
     bool is_open;
 
+    bool is_mouse_grabbed;
     bool is_key_pressed[SDL_NUM_SCANCODES];
 } GicWindow;
 

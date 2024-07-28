@@ -11,4 +11,4 @@ void gic_destroy_gl_renderer(GicGlRenderer* renderer);
 
 void gic_gl_renderer_swap_buffers(GicGlRenderer* renderer);
 void gic_gl_clear(GicGlRenderer* renderer, float r, float g, float b);
-void gic_gl_render_height_map(GicGlRenderer* renderer, GicHeightMap* hm);
+void gic_gl_render_height_map(GicGlRenderer* renderer, GicHeightMap** hm);

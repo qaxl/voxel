@@ -22,6 +22,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#include <nuklear.h>
+#include <nuklear_sdl_gl3.h>
+
 enum {
     SHADER_VOXEL,
     SHADER_HM,
@@ -54,7 +57,7 @@ struct GicGlRenderer {
     mat4 view;
 
     Shader shaders[NUM_OF_SHADERS];
-    Chunk chunk;
+    // Chunk chunk;
 
     uint32_t vao;
     uint32_t vbo;
@@ -67,6 +70,11 @@ struct GicGlRenderer {
     int mouse_last_x;
     int mouse_last_y;
     int face_count;
+
+    int old_seed;
+    int new_seed;
+
+    struct nk_context* nk_ctx;
 };
 
 static void gic_gl__window_resize(void* user, int width, int height) {
@@ -154,7 +162,7 @@ GicGlRenderer* gic_create_gl_renderer(GicWindow* window) {
     LOAD_SHADER(SHADER_VOXEL);
     printf("s\n");
 
-    memset(&renderer->chunk, 0, sizeof(renderer->chunk));
+    // memset(&renderer->chunk, 0, sizeof(renderer->chunk));
 
     glCreateVertexArrays(1, &renderer->vao);
     // not a mistake, simply vbo and ibo are next to each other so they can be seen as an array.
@@ -164,8 +172,8 @@ GicGlRenderer* gic_create_gl_renderer(GicWindow* window) {
     glBindBuffer(GL_ARRAY_BUFFER, renderer->vbo);
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, renderer->ibo);
 
-    glBufferData(GL_ARRAY_BUFFER, sizeof(renderer->chunk.voxels), &renderer->chunk.voxels[0][0][0].vertices[0], GL_STATIC_DRAW);
-    glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(Index) * (renderer->face_count / 36), renderer->chunk.indices, GL_STATIC_DRAW);
+    // glBufferData(GL_ARRAY_BUFFER, sizeof(renderer->chunk.voxels), &renderer->chunk.voxels[0][0][0].vertices[0], GL_STATIC_DRAW);
+    // glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(Index) * (renderer->face_count / 36), renderer->chunk.indices, GL_STATIC_DRAW);
 
     glVertexAttribIPointer(0, 1, GL_UNSIGNED_INT, 0, NULL);
     glEnableVertexAttribArray(0);
@@ -173,6 +181,13 @@ GicGlRenderer* gic_create_gl_renderer(GicWindow* window) {
     glUseProgram(renderer->shaders[SHADER_VOXEL]);
 
     renderer->camera = gic_create_camera_default();
+    renderer->nk_ctx = nk_sdl_init(window->window);
+
+    renderer->new_seed = renderer->old_seed = 1337;
+
+    struct nk_font_atlas* k;
+    nk_sdl_font_stash_begin(&k);
+    nk_sdl_font_stash_end();
 
     return renderer;
 }
@@ -183,6 +198,35 @@ void gic_destroy_gl_renderer(GicGlRenderer* renderer) {
 }
 
 void gic_gl_renderer_swap_buffers(GicGlRenderer* renderer) {
+    if (!renderer->window->is_mouse_grabbed) {
+        nk_input_end(renderer->nk_ctx);
+
+        struct nk_context* ctx = renderer->nk_ctx;
+        if (nk_begin(ctx, "Generator Settings", nk_rect(300, 300, 200, 200), NK_WINDOW_MOVABLE | NK_WINDOW_TITLE)) {
+            nk_layout_row_dynamic(ctx, 30, 1);
+            nk_slider_int(ctx, INT_MIN, &renderer->new_seed, INT_MAX, 1);
+
+            // TODO: 
+            static char seed_str[64] = { 0 };
+            int seed_len = strlen(seed_str);
+            SDL_itoa(renderer->new_seed, seed_str, 10);
+            nk_layout_row_dynamic(ctx, 30, 2);
+            nk_edit_string(ctx, NK_EDIT_FIELD | NK_TEXT_EDIT_MODE_INSERT, seed_str, &seed_len, 64, nk_filter_default);
+            nk_edit_string_zero_terminated(ctx, NK_EDIT_FIELD, seed_str, 64, nk_filter_decimal);
+            // printf("%s\n", seed_str);
+            renderer->new_seed = atoi(seed_str);
+        } nk_end(ctx);
+
+        
+        nk_sdl_render(NK_ANTI_ALIASING_ON, 512 * 1024, 128 * 1024);
+    }
+
+    glEnable(GL_DEPTH_TEST);
+    glDepthFunc(GL_LESS);
+    glEnable(GL_CULL_FACE);
+    glCullFace(GL_FRONT);
+    glFrontFace(GL_CCW);
+
     SDL_GL_SwapWindow(renderer->window->window);
 }
 
@@ -210,6 +254,10 @@ void gic_gl_clear(GicGlRenderer* renderer, float r, float g, float b) {
     glm_mat4_mul(renderer->projection, renderer->view, mvp);
     glUniformMatrix4fv(1, 1, GL_FALSE, &mvp[0][0]);
 
+    if (!renderer->window->is_mouse_grabbed) {
+        nk_input_begin(renderer->nk_ctx);
+    }
+
     // glDrawElements(GL_TRIANGLES, renderer->face_count, GL_UNSIGNED_INT, NULL);
 }
 
@@ -227,8 +275,18 @@ typedef struct Gic__HMIndex {
     uint32_t index;
 } Gic__HMIndex;
 
-#define PACK_DATA(x, z) vtx[i++].packed_data = x & 0x3F | ((int)hm->map[x][z] & 0xFF) << 6 | (z & 0x3F) << 14 | color
+#define PACK_DATA(x, y, z) v2d->vtx[k++].packed_data = (x & 0x3F) | ((int)y & 0xFF) << 6 | (z & 0x3F) << 14 | color
 #define PACK_INDEX
+#define MAKE_PACKED_COLOR(r, g, b) ((int)(r) & 0x3F) << 20 | ((int)(g) & 0x3F) << 24 | ((int)(b) & 0x3F) << 28
+
+
+typedef struct Vec2D {
+    Gic__HMVertex vtx[(HEIGHT_MAP_SIZE + 100) * (HEIGHT_MAP_SIZE + 100)];
+} Vec2D;
+
+typedef struct VecI2D {
+    int i[HEIGHT_MAP_SIZE + 10][HEIGHT_MAP_SIZE + 10];
+} VecI2D;
 
 static void gic_gl__initialize_height_map_data(GicHeightMap* hm, Gic__HeightMapData* hmd) {
     glGenVertexArrays(1, &hmd->va);
@@ -241,51 +299,101 @@ static void gic_gl__initialize_height_map_data(GicHeightMap* hm, Gic__HeightMapD
     glVertexAttribIPointer(0, 1, GL_INT, 0, NULL);
     glEnableVertexAttribArray(0);
 
-    Gic__HMVertex* vtx = malloc(sizeof(*vtx) * HEIGHT_MAP_SIZE * HEIGHT_MAP_SIZE);
-    Gic__HMIndex* itx = malloc(sizeof(*itx) * HEIGHT_MAP_SIZE * HEIGHT_MAP_SIZE * 6);
+    Vec2D* v2d = malloc(sizeof(Vec2D));
+    Gic__HMIndex* itx = malloc(sizeof(*itx) * (HEIGHT_MAP_SIZE + 1) * (HEIGHT_MAP_SIZE + 1) * 36);
+    VecI2D* vi2d = malloc(sizeof(VecI2D));
 
     int i = 0;
+    int j = 0;
+    int k = 0;
     for (int x = 0; x < HEIGHT_MAP_SIZE; ++x) {
         for (int z = 0; z < HEIGHT_MAP_SIZE; ++z) {
-            float height = hm->map[x][z];
-            int color = ((int)(height * 15.f) & 0x3F) << 20 | ((int)(height * 15.f) & 0x3F) << 24 | ((int)(height * 15.f) & 0x3F) << 28;
-            // int color = 15 << 20 | 15 << 24 | 15 << 28;
-            PACK_DATA(x, z);
+            float height = hm->map[x][z] * 45.f;
+            int color = 0;
+            if (height > 40.f) {
+                color = MAKE_PACKED_COLOR(0, 10, 0);
+            } else if (height > 30.f) {
+                color = MAKE_PACKED_COLOR(6, 6, 0);
+            } else if (height > 15.f) {
+                color = MAKE_PACKED_COLOR(4, 6, 0);
+            } else {
+                color = MAKE_PACKED_COLOR(0, 0, 12);
+            }
+
+            PACK_DATA(x, height, z);
+            PACK_DATA(x + 1, height, z);
+            PACK_DATA(x, height, z + 1);
+            PACK_DATA(x + 1, height, z + 1);
+            PACK_DATA(x, height + 1, z);
+            PACK_DATA(x + 1, height + 1, z);
+            PACK_DATA(x + 1, height + 1, z + 1);
+            PACK_DATA(x, height + 1, z + 1);
+
+            itx[i++].index = j + 0;  // Bottom-left
+            itx[i++].index = j + 1;  // Bottom-right
+            itx[i++].index = j + 2;  // Top-left
+            itx[i++].index = j + 1;  // Bottom-right
+            itx[i++].index = j + 3;  // Top-right
+            itx[i++].index = j + 2;  // Top-left
+            itx[i++].index = j + 4;  // Bottom-left
+            itx[i++].index = j + 6;  // Top-left
+            itx[i++].index = j + 5;  // Bottom-right
+            itx[i++].index = j + 5;  // Bottom-right
+            itx[i++].index = j + 6; // Top-left
+            itx[i++].index = j + 7; // Top-right
+            itx[i++].index = j + 0;  // Bottom-left
+            itx[i++].index = j + 2;  // Top-left
+            itx[i++].index = j + 6;  // Top-right
+            itx[i++].index = j + 0;  // Bottom-left
+            itx[i++].index = j + 6;  // Top-right
+            itx[i++].index = j + 4;  // Bottom-right
+            itx[i++].index = j + 1;  // Bottom-left
+            itx[i++].index = j + 5;  // Bottom-right
+            itx[i++].index = j + 3;  // Top-left
+            itx[i++].index = j + 3;  // Top-left
+            itx[i++].index = j + 5;  // Bottom-right
+            itx[i++].index = j + 7;  // Top-right
+            itx[i++].index = j + 2;  // Bottom-left
+            itx[i++].index = j + 3;  // Bottom-right
+            itx[i++].index = j + 6;  // Top-left
+            itx[i++].index = j + 3;  // Bottom-right
+            itx[i++].index = j + 7;  // Top-right
+            itx[i++].index = j + 6;  // Top-left
+            itx[i++].index = j + 0;  // Bottom-left
+            itx[i++].index = j + 4;  // Top-left
+            itx[i++].index = j + 1;  // Bottom-right
+            itx[i++].index = j + 1;  // Bottom-right
+            itx[i++].index = j + 4;  // Top-left
+            itx[i++].index = j + 5;  // Top-right
+
+            j += 8;
         }
     }
 
-    int j = 0;
-    for (int x = 0; x < HEIGHT_MAP_SIZE - 1; ++x) {
-        for (int z = 0; z < HEIGHT_MAP_SIZE - 1; ++z) {
-            int l = x * HEIGHT_MAP_SIZE + z;
-            itx[j++].index = l;
-            itx[j++].index = l + HEIGHT_MAP_SIZE;
-            itx[j++].index = l + 1;
-
-            itx[j++].index = l + 1;
-            itx[j++].index = l + HEIGHT_MAP_SIZE;
-            itx[j++].index = l + HEIGHT_MAP_SIZE + 1;
-        }
-    }
-
-    glBufferData(GL_ARRAY_BUFFER, i * sizeof(Gic__HMVertex), vtx, GL_STATIC_DRAW);
-    glBufferData(GL_ELEMENT_ARRAY_BUFFER, j * sizeof(Gic__HMIndex), itx, GL_STATIC_DRAW);
-    free(vtx);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(v2d->vtx), v2d->vtx, GL_STATIC_DRAW);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, i * sizeof(Gic__HMIndex), itx, GL_STATIC_DRAW);
+    free(v2d);
     free(itx);
 
     glBindVertexArray(0);
 }
 
-void gic_gl_render_height_map(GicGlRenderer* renderer, GicHeightMap* hm) {
-    if (hm->_renderer_internal == NULL) {
-        hm->_renderer_internal = malloc(sizeof(Gic__HeightMapData));
-        gic_gl__initialize_height_map_data(hm, hm->_renderer_internal);
+void gic_gl_render_height_map(GicGlRenderer* renderer, GicHeightMap** hm) {
+    if (renderer->old_seed != renderer->new_seed) {
+        free(*hm);
+        *hm = gic_height_map_generate_with_seed(renderer->new_seed);
+        renderer->old_seed = renderer->new_seed;
     }
 
-    Gic__HeightMapData* hmd = hm->_renderer_internal;
+    if ((*hm)->_renderer_internal == NULL) {
+        (*hm)->_renderer_internal = malloc(sizeof(Gic__HeightMapData));
+        gic_gl__initialize_height_map_data(*hm, (*hm)->_renderer_internal);
+    }
+
+    Gic__HeightMapData* hmd = (*hm)->_renderer_internal;
     glBindVertexArray(hmd->va);
     glUseProgram(renderer->shaders[SHADER_VOXEL]);
     
     // glDrawArrays(GL_POINTS, 0, HEIGHT_MAP_SIZE * HEIGHT_MAP_SIZE);
-    glDrawElements(GL_TRIANGLES, 6 * HEIGHT_MAP_SIZE * HEIGHT_MAP_SIZE, GL_UNSIGNED_INT, NULL);
+    glDrawElements(GL_TRIANGLES, 36 * HEIGHT_MAP_SIZE * HEIGHT_MAP_SIZE, GL_UNSIGNED_INT, NULL);
 }

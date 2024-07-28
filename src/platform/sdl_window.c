@@ -2,6 +2,9 @@
 #include "SDL3/SDL_events.h"
 #include "util.h"
 
+#include <nuklear.h>
+#include <nuklear_sdl_gl3.h>
+
 GicWindow* gic_create_window(const char* title, int width, int height) {
     static bool initialized = false;
     if (!initialized) {
@@ -21,6 +24,7 @@ GicWindow* gic_create_window(const char* title, int width, int height) {
         return NULL;
     }
 
+    window->is_mouse_grabbed = true;
     window->is_open = true;
     window->width = width;
     window->height = height;
@@ -72,6 +76,14 @@ void gic_window_poll_events(GicWindow* window) {
                     window->renderer_cbs.wheel(window->renderer_cbs.ptr, event.wheel.y);
                 break;
         }
+
+        if (!window->is_mouse_grabbed) {
+            nk_sdl_handle_event(&event);
+        }
+    }
+
+    if (!window->is_mouse_grabbed) {
+        nk_sdl_handle_grab();
     }
 }
 

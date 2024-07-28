@@ -9,4 +9,6 @@ typedef struct GicHeightMap {
 } GicHeightMap;
 
 GicHeightMap* gic_height_map_generate_using_perlin(float scale);
+GicHeightMap* gic_height_map_generate_with_seed(int seed);
+
 void gic_height_map_destroy(GicHeightMap* hm);
